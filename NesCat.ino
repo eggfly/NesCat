@@ -1,5 +1,5 @@
 //MEOW?                                                           
-//                                                ▄▄         
+//                                                ▄▄        
 //                        ▓▀██▄                ▄▓█▀▓▓       
 //                       ▐▌░ ▀███▄          ▄███▀  ░▓▒      
 //                       ▓▌ ░░░▒██████████████▓░▒░░░▓▌      
@@ -10,7 +10,7 @@
 //      ▐███████▀▒▒▄▒    ▓██████████▓       ▀▓██████▒       
 //      ▐▌    ▒▒     ░▓▒ ▓███████▀▀▀▓▓▄    ▄▓▓▀▀███▌        
 //     ▐▓▌             ░▒▒▓▓▒░        ▀▀  ▀▀     ▐▓▌        
-//    ▐██▌              ▒▒▒▓▓▓▒         ▒▒     ▄▓█▓▒         
+//    ▐██▌              ▒▒▒▓▓▓▒         ▒▒     ▄▓█▓▒        
 //   ▐████▒            ▒▓▒ ░▓▓▓▓▒▒▒▒▒▒▒▓▓▓▄▓▓▓▓███▀░░░░░░   
 //   ▐██████▓▄▄▄▄▄▄▄▄▄▄▓▓▄▄░            ░▓▒ ▒░░▓▓░░░░░      
 //   ░▓█████████████████████▓▒▄▄▄▄▄▄▄▄▓▓▓▓▓▓▓▓▓█▓░░░        
@@ -58,24 +58,27 @@
 #define NES_FOLDER ("/NES/")
 
 #define BLUETOOTH_ENABLED
-#define KEYBOARD_ENABLED
+// #define KEYBOARD_ENABLED
 #define LCD_ENABLED true
 #define SOUND_ENABLED true
-#define COMPOSITE_VIDEO_ENABLED
+// #define COMPOSITE_VIDEO_ENABLED
 
 #define DEBUG true //Serial debugging enable.
 #define DEBUGEXTRA false //Extra Serial debugging enable.
 
 //================================================================================
 
-#define PIN_UP     39  //SVN
-#define PIN_DOWN   35  //IO35
+#define PIN_UP     14  //SVN
+#define PIN_DOWN   32  //IO35
 #define PIN_LEFT   36  //SVP
-#define PIN_RIGHT  34  //IO34
-#define PIN_A      2   //IO2
-#define PIN_B      14  //TMS
-#define PIN_START  15  //TDO
-#define PIN_SELECT 13  //TCK
+#define PIN_RIGHT  39  //IO34
+
+#define PIN_A      35   //IO2
+#define PIN_B      34  //TMS
+
+// USE BOOT PIN HERE
+#define PIN_START   0  //TDO
+#define PIN_SELECT 34  //TCK
 
 ///!!! do not forget 1KOHM resistors
 
@@ -87,28 +90,30 @@
 
 //AUDIO_i2S:
 #define I2S_BCK_IO (GPIO_NUM_27) //BCK
-#define I2S_WS_IO  (GPIO_NUM_32) //LCK
+#define I2S_WS_IO  (GPIO_NUM_26) //LCK
 #define I2S_DO_IO  (GPIO_NUM_25) //DIN
 #define I2S_DI_IO  (-1)
 
 //LCD_ST7789:
-#define TFT_CS   -1  // define chip select pin
-#define TFT_DC    5  // define data/command pin
-#define TFT_RST  19
+#define TFT_CS    5  // define chip select pin
+#define TFT_DC   15  // define data/command pin
+#define TFT_RST  13
 #define TFT_MOSI 23  // Data out (SDA) //better not change
 #define TFT_SCLK 18  // Clock out (SCL) //better not change
 
 //micro_SD_Card:
-#define SOFTSD_MOSI_PIN (GPIO_NUM_17)
-#define SOFTSD_MISO_PIN (GPIO_NUM_16)
-#define SOFTSD_SCK_PIN (GPIO_NUM_21)
-#define SD_CS_PIN GPIO_NUM_22
+#define SOFTSD_MOSI_PIN (GPIO_NUM_23)
+#define SOFTSD_MISO_PIN (GPIO_NUM_19)
+#define SOFTSD_SCK_PIN (GPIO_NUM_18)
+#define SD_CS_PIN GPIO_NUM_4
+#define SD_CS          4
 
 //================================================================================
 
 //********************************************************************************
 //MAIN LIBRARIES:
 
+// #include <SD.h>
 #include <esp_task_wdt.h>
 
 #include "esp_types.h"
@@ -134,6 +139,33 @@
 //--------------------------------------------------------------------------------
 //SPI FLASH MEMORY ACCESS:
 #include "esp_spi_flash.h"
+
+
+#define TFT_BACKLIGHT  2
+uint8_t brightness_level = 6;
+PROGMEM const uint8_t brightness_levels[] = {0, 1, 2, 4, 8, 16, 32, 64, 128, 255};
+const uint8_t brightness_level_size = sizeof(brightness_levels) / sizeof(brightness_levels[0]);
+
+
+static bool ledc_setup = false;
+
+void lcd_set_brightness(uint8_t level) {
+  if (ledc_setup && level < brightness_level_size) {
+    uint8_t brightness = brightness_levels[level];
+    Serial.printf("lcd_set_brightness: level=%d, value=%d\n", level, brightness);
+    ledcWrite(0, 255 - brightness);
+  }
+}
+
+void ledc_init() {
+  ledcSetup(0, 5000, 8);
+  ledcAttachPin(TFT_BACKLIGHT, 0);
+  ledc_setup = true;
+}
+
+
+#define SD_CONFIG SdSpiConfig(SD_CS_PIN, SHARED_SPI, SD_SCK_HZ(20000000))
+
 
 #define SPI_FLASH_ADDRESS 0x00300000 //0x00300000 working (empty flash area)
 #define SPI_FLASH_SECTOR_SIZE 0x1000 //4kB = better not change
@@ -235,7 +267,10 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 const uint8_t SOFT_MOSI_PIN = SOFTSD_MOSI_PIN;
 const uint8_t SOFT_MISO_PIN = SOFTSD_MISO_PIN;
 const uint8_t SOFT_SCK_PIN = SOFTSD_SCK_PIN;
-SdFatSoftSpi<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> SD;
+
+
+SdFat SD;
+
 File fp;
 SdFile dirFile; //for root directory file listing
 SdFile file;
@@ -457,7 +492,7 @@ IRAM_ATTR static void PS4_JOY() {
 
   //read data from JoyStick
   num_get = hid_get(buf, sizeof(buf) - 1); // called from emulation loop
-//********************************************************************************
+  //********************************************************************************
 
   if ((num_get != -1) && buf[0] == 161) { // If connected then read JoyStick
 
@@ -585,18 +620,18 @@ uint8_t get_pad0(void) {
 
   //  12, 33, 9, 10pin not usable
 
-  if (digitalRead(PIN_A) == 1) value |= 1; //A
-  if (digitalRead(PIN_B) == 1) value |= 2; //B
-  if (digitalRead(PIN_SELECT) == 1) value |= 4; //SELECT
-  if (digitalRead(PIN_START) == 1) value |= 8; //START
-  if (digitalRead(PIN_UP) == 1) value |= 16; //UP
-  if (digitalRead(PIN_DOWN) == 1) value |= 32; //DOWN
-  if (digitalRead(PIN_LEFT) == 1) value |= 64; //LEFT
-  if (digitalRead(PIN_RIGHT) == 1) value |= 128; //RIGHT
+  if (digitalRead(PIN_A) == 0) value |= 1; //A
+  if (digitalRead(PIN_B) == 0) value |= 2; //B
+  if (digitalRead(PIN_SELECT) == 0) value |= 4; //SELECT
+  if (digitalRead(PIN_START) == 0) value |= 8; //START
+  if (digitalRead(PIN_UP) == 0) value |= 16; //UP
+  if (digitalRead(PIN_DOWN) == 0) value |= 32; //DOWN
+  if (digitalRead(PIN_LEFT) == 0) value |= 64; //LEFT
+  if (digitalRead(PIN_RIGHT) == 0) value |= 128; //RIGHT
 
-  if (digitalRead(PIN_SELECT) == 1 && digitalRead(PIN_START) == 1) NES_POWER = 0; //EXIT
+  if (digitalRead(PIN_SELECT) == 0 && digitalRead(PIN_START) == 0) NES_POWER = 0; //EXIT
 
-  //EJECT EMULATOR 
+  //EJECT EMULATOR
   if (JOY_SHARE == 1 && JOY_OPTIONS == 1) {
     JOY_SHARE = 0;
     JOY_OPTIONS = 0;
@@ -858,17 +893,15 @@ void do_audio_frame()
       n = left;
     audio_callback(audio_frame, n); //get more data
 
-
     //16 bit mono -> 32-bit (16 bit r+l)
     for (int i = n - 1; i >= 0; i--)
     {
       //      audio_frame[i] = audio_frame[i] + 0x8000;
       ///      uint16_t a = (audio_frame[i] >> 3); //VEEERY BAD!
-      uint16_t a = (audio_frame[i] >> 0);
-      audio_frame[i * 2 + 1] = 0x8000 + a;
-      audio_frame[i * 2] = 0x8000 - a;
-
-      ///Serial.print(audio_frame[i]);
+      uint16_t a = (audio_frame[i] >> 11);
+      audio_frame[i * 2 + 1] = a;
+      audio_frame[i * 2] = a;
+      // Serial.println(audio_frame[i]);
     }
     size_t i2s_bytes_write;
     // i2s_write(I2S_NUM_0, (const char *)audio_frame, 2 * n, &i2s_bytes_write, portMAX_DELAY);
@@ -977,9 +1010,8 @@ char* NESMENU() {
 
   num = 0;
   //Load List files in root directory.
-  ///if (!dirFile.open("/", O_READ)) {
+  //  if (!dirFile.open("/", O_READ)) {
   if (!dirFile.open(NES_FOLDER, O_READ)) {
-
     SD.errorHalt("open root failed");
     while (1) {};
   }
@@ -1006,7 +1038,6 @@ char* NESMENU() {
           && (fileext[num][1] == 'E' || fileext[num][1] == 'e')
           && (fileext[num][2] == 'S' || fileext[num][2] == 's')) {
         num++;
-
       }
     }
     loadedFileNames = num;
@@ -1049,35 +1080,35 @@ char* NESMENU() {
     //--------------------------------------------------------------------------------
     //PROCESS CURSOR SELECTION
 
-    if (digitalRead(PIN_A) == 1) {
+    if (digitalRead(PIN_A) == 0) {
       JOY_CROSS = 1;  //A
       delay(200);
     }
-    if (digitalRead(PIN_B) == 1) {
+    if (digitalRead(PIN_B) == 0) {
       JOY_SQUARE = 1;   //B
       delay(200);
     }
-    if (digitalRead(PIN_SELECT) == 1) {
+    if (digitalRead(PIN_SELECT) == 0) {
       JOY_OPTIONS = 1;   //SELECT
       delay(200);
     }
-    if (digitalRead(PIN_START) == 1) {
+    if (digitalRead(PIN_START) == 0) {
       JOY_SHARE = 1;   //START
       delay(200);
     }
-    if (digitalRead(PIN_UP) == 1) {
+    if (digitalRead(PIN_UP) == 0) {
       JOY_UP = 1;
       delay(200);
     }
-    if (digitalRead(PIN_DOWN) == 1) {
+    if (digitalRead(PIN_DOWN) == 0) {
       JOY_DOWN = 1;   //DOWN
       delay(200);
     }
-    if (digitalRead(PIN_LEFT) == 1) {
+    if (digitalRead(PIN_LEFT) == 0) {
       JOY_LEFT = 1;   //LEFT
       delay(200);
     }
-    if (digitalRead(PIN_RIGHT) == 1) {
+    if (digitalRead(PIN_RIGHT) == 0) {
       JOY_RIGHT = 1;   //RIGHT
       delay(200);
     }
@@ -4123,9 +4154,9 @@ void ppu_scanline(int scanline, bool draw_flag) {
     ppu.strike_cycle = (uint32_t) - 1;
     ppu.vram_accessible = false;
   }
-    
+
   if (LCD_ENABLED) xQueueSend(vidQueue, &SCREENMEMORY, 0); //refresh LCD
-  
+
 }
 
 void ppu_destroy(ppu_t **src_ppu);
@@ -5330,7 +5361,7 @@ nes_t *nes_create(void) {
   machine->cpu->read_handler = machine->readhandler;
   machine->cpu->write_handler = machine->writehandler;
 
-  
+
   // apu
   if (SOUND_ENABLED) {
     osd_getsoundinfo(&osd_sound);
@@ -5578,10 +5609,12 @@ unsigned char *romdata = 0;
 
 void setup() {
   Serial.begin(115200);
+  ledc_init();
+  lcd_set_brightness(4);
 
   MEMORY_STATUS();
 
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   // VIDEO MEMORY ALLOCATION
 
   for (uint32_t tmp = 0; tmp < 240; tmp++) {
@@ -5589,7 +5622,7 @@ void setup() {
     memset(SCREENMEMORY[tmp], 0, 256);
   }
 
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
 
   pinMode(PIN_A, INPUT);    //A
   pinMode(PIN_B, INPUT);   //B
@@ -5600,14 +5633,14 @@ void setup() {
   pinMode(PIN_LEFT, INPUT);       //LEFT
   pinMode(PIN_RIGHT, INPUT);  //RIGHT
 
-//--------------------------------------------------------------------------------
-// BLUETOOTH PS4 DUALSHOCK SUPPORT
+  //--------------------------------------------------------------------------------
+  // BLUETOOTH PS4 DUALSHOCK SUPPORT
 #ifdef BLUETOOTH_ENABLED
   hid_init("ds4_esp32");
 #endif
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
 
-  delay(3000);  // Wait a long time for esp32 to have Serial print statements work right.
+  // delay(100);  // Wait a long time for esp32 to have Serial print statements work right.
 
   MEMORY_STATUS();
 
@@ -5615,24 +5648,26 @@ void setup() {
 #ifdef COMPOSITE_VIDEO_ENABLED
   video_init(4, 2, nes_32bit, 1); // start the A/V pump on app core
 #endif
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
 
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
+  // tft.println("Initializing SD card...");
+  if (DEBUG) Serial.println("Initializing SD card...");
+  auto sd_ok = SD.begin(SD_CONFIG);
+
+  //--------------------------------------------------------------------------------
 #ifdef LCD_ENABLED
   // if the display has CS pin try with SPI_MODE0
-  tft.init(240, 240, SPI_MODE2);    // Init ST7789 display 240x240 pixel
+  tft.init(240, 240, SPI_MODE0);    // Init ST7789 display 240x240 pixel
   // if the screen is flipped, remove this command
-  tft.setRotation(3);
+  tft.setRotation(2);
   tft.setSPISpeed(75000000);
   tft.fillScreen(ST77XX_BLACK);
 
   tft.println("NES CAT: MEOW!...");
 #endif
-//--------------------------------------------------------------------------------
-//--------------------------------------------------------------------------------
-  tft.println("Initializing SD card...");
-  if (DEBUG) Serial.println("Initializing SD card...");
-  if (!SD.begin(SD_CS_PIN, SD_SCK_MHZ(5))) { ///SD max 10MHz!!!
+  if (!sd_ok) { ///SD max 10MHz!!!
     tft.println("SD card initialization failed!");
     if (DEBUG) Serial.println("SD card initialization failed!");
     while (1) {}; //FREEZE
@@ -5640,7 +5675,7 @@ void setup() {
     tft.println("SD card initialization done.");
     if (DEBUG) Serial.println("SD card initialization done.");
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
 
   audiovideo_init(); //Init VIDEO Task and AUDIO I2S
 
@@ -5650,7 +5685,7 @@ void setup() {
   draw_string("NesCat by Nathalis");
   delay(500);
 
-//********************************************************************************
+  //********************************************************************************
 
   NESmachine = nes_create();
   if (NULL == NESmachine) {
@@ -5659,16 +5694,16 @@ void setup() {
     while (1) {} //FREEZE
   }
 
-//********************************************************************************
-//--------------------------------------------------------------------------------
+  //********************************************************************************
+  //--------------------------------------------------------------------------------
   //PS2/USB KEYBOARD SUPPORT
 #ifdef KEYBOARD_ENABLED
   kb_begin();
 #endif
 
-  install_timer(60); //60Hz 
+  install_timer(60); //60Hz
 
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
 
   while (1) { //NES SYSTEM LOOP
     ROMFILENAME = NESMENU();
@@ -5683,7 +5718,7 @@ void setup() {
     if (DEBUG) Serial.println("Inserting cartridge.");
     if (DEBUG) tft.println("Inserting cartridge.");
 
-//--------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------
 
     if (NULL == rominfo) rominfo = (rominfo_t*)malloc(sizeof(rominfo_t));
     if (NULL == rominfo) goto rom_load_fail;
@@ -5722,7 +5757,7 @@ rom_load_fail:
 
 rom_load_success:
 
-//********************************************************************************
+    //********************************************************************************
 
     if (DEBUG) {
       Serial.println("ROMLOAD SUCCESS.");
@@ -5770,12 +5805,11 @@ inscart_success:
 #ifdef BLUETOOTH_ENABLED
       hid_update();
       PS4_JOY();
-#endif      
+#endif
     }
     delay(1000);
     NES_POWER = 1;
   }
-
 
 }
 
